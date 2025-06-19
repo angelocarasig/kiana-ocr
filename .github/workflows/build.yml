@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
 
 jobs:
   build-windows:
@@ -140,21 +145,37 @@ jobs:
   create-release:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
     
     steps:
     - name: Download all artifacts
       uses: actions/download-artifact@v4
     
+    - name: Set version
+      id: version
+      run: |
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION="v${{ github.event.inputs.version || '1.0.0' }}"
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+    
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ steps.version.outputs.VERSION }}
+        name: Kiana OCR ${{ steps.version.outputs.VERSION }}
+        draft: false
+        prerelease: false
         files: |
           KianaOCR-Windows/KianaOCR.exe
           KianaOCR-macOS/KianaOCR-macOS.zip
           KianaOCR-Linux/KianaOCR-Linux.tar.gz
         body: |
-          ## Kiana OCR Release
+          ## Kiana OCR Release ${{ steps.version.outputs.VERSION }}
           
           ### Installation Instructions:
           
