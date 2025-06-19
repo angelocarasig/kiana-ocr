@@ -1,0 +1,176 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name KianaOCR `
+          --add-data "README.md;." `
+          --hidden-import PIL._tkinter_finder `
+          --hidden-import deep_translator `
+          --collect-all deep_translator `
+          --collect-all pytesseract `
+          main.py
+    
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: KianaOCR-Windows
+        path: dist/KianaOCR.exe
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name KianaOCR \
+          --add-data "README.md:." \
+          --hidden-import PIL._tkinter_finder \
+          --hidden-import deep_translator \
+          --collect-all deep_translator \
+          --collect-all pytesseract \
+          main.py
+    
+    - name: Create macOS app bundle
+      run: |
+        mkdir -p KianaOCR.app/Contents/MacOS
+        mkdir -p KianaOCR.app/Contents/Resources
+        cp dist/KianaOCR KianaOCR.app/Contents/MacOS/
+        echo '<?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>CFBundleExecutable</key>
+          <string>KianaOCR</string>
+          <key>CFBundleIdentifier</key>
+          <string>com.kiana.ocr</string>
+          <key>CFBundleName</key>
+          <string>Kiana OCR</string>
+          <key>CFBundleVersion</key>
+          <string>1.0</string>
+          <key>CFBundlePackageType</key>
+          <string>APPL</string>
+        </dict>
+        </plist>' > KianaOCR.app/Contents/Info.plist
+        zip -r KianaOCR-macOS.zip KianaOCR.app
+    
+    - name: Upload macOS artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: KianaOCR-macOS
+        path: KianaOCR-macOS.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk python3-pil.imagetk
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name KianaOCR \
+          --add-data "README.md:." \
+          --hidden-import PIL._tkinter_finder \
+          --hidden-import deep_translator \
+          --collect-all deep_translator \
+          --collect-all pytesseract \
+          main.py
+    
+    - name: Make executable
+      run: chmod +x dist/KianaOCR
+    
+    - name: Create tar.gz archive
+      run: tar -czf KianaOCR-Linux.tar.gz -C dist KianaOCR
+    
+    - name: Upload Linux artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: KianaOCR-Linux
+        path: KianaOCR-Linux.tar.gz
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          KianaOCR-Windows/KianaOCR.exe
+          KianaOCR-macOS/KianaOCR-macOS.zip
+          KianaOCR-Linux/KianaOCR-Linux.tar.gz
+        body: |
+          ## Kiana OCR Release
+          
+          ### Installation Instructions:
+          
+          **Windows:**
+          1. Download `KianaOCR.exe`
+          2. Install [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki)
+          3. Run the executable
+          
+          **macOS:**
+          1. Download `KianaOCR-macOS.zip`
+          2. Extract and move to Applications
+          3. Install Tesseract: `brew install tesseract`
+          4. Right-click and select "Open" on first run
+          
+          **Linux:**
+          1. Download `KianaOCR-Linux.tar.gz`
+          2. Extract: `tar -xzf KianaOCR-Linux.tar.gz`
+          3. Install Tesseract: `sudo apt-get install tesseract-ocr`
+          4. Run: `./KianaOCR`
